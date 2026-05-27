@@ -11,7 +11,7 @@
 window.SP_CONFIG = {
 
   /* ── 必填：Google Apps Script Web App URL ─────────────────── */
-  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyKubS4eyLdOsrTam0L2W_lLWOtOvq4M-7hNnWeWpmNny62Fnr6_xG3grDbRd9Amw1d/exec',
+  APPS_SCRIPT_URL:'https://script.google.com/macros/s/AKfycbyKubS4eyLdOsrTam0L2W_lLWOtOvq4M-7hNnWeWpmNny62Fnr6_xG3grDbRd9Amw1d/exec',
 
   /* ── 自動同步間隔（毫秒，預設 5 分鐘） ────────────────────── */
   AUTO_SYNC_INTERVAL_MS: 5 * 60 * 1000,
