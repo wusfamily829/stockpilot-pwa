@@ -665,3 +665,166 @@ setInterval(syncData, (CFG.AUTO_SYNC_INTERVAL_MS||300000));
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
 }
+
+/* ========================================
+   新增交易 - JavaScript 邏輯
+======================================== */
+
+function openTransactionModal() {
+  const modal = document.getElementById('transaction-modal');
+  modal.style.display = 'flex';
+  
+  // 設定今天日期為預設值
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('tx-date').value = today;
+  
+  // 清空表單
+  clearTransactionForm();
+}
+
+function closeTransactionModal() {
+  document.getElementById('transaction-modal').style.display = 'none';
+  document.getElementById('tx-status').style.display = 'none';
+  clearTransactionForm();
+}
+
+function clearTransactionForm() {
+  const fields = ['tx-account', 'tx-code', 'tx-name', 'tx-qty', 'tx-price', 'tx-note'];
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  
+  const display = document.getElementById('tx-calc-display');
+  if (display) display.style.display = 'none';
+}
+
+function updateTransactionCalc() {
+  const qty = parseFloat(document.getElementById('tx-qty')?.value) || 0;
+  const price = parseFloat(document.getElementById('tx-price')?.value) || 0;
+  const type = document.getElementById('tx-type')?.value;
+  const display = document.getElementById('tx-calc-display');
+
+  if (!qty || !price || !['買入', '賣出'].includes(type)) {
+    if (display) display.style.display = 'none';
+    return;
+  }
+
+  const amount = qty * price;
+
+  // 台股費率計算（可根據你的帳戶設定調整）
+  const feeRate = 0.001425;      // 手續費率 0.1425%
+  const feeDiscount = 0.6;       // 六折優惠
+  const minFee = 20;             // 最低手續費
+  const taxRate = type === '賣出' ? 0.003 : 0; // 賣出才有證交稅
+
+  const fee = Math.max(Math.round(amount * feeRate * feeDiscount), minFee);
+  const tax = Math.round(amount * taxRate);
+  const netAmount = type === '買入' 
+    ? -(amount + fee)          // 買入：負值（支出）
+    : amount - fee - tax;      // 賣出：正值（收入）
+
+  // 更新顯示
+  document.getElementById('tx-calc-amount').textContent = `NT$ ${amount.toLocaleString()}`;
+  document.getElementById('tx-calc-fee').textContent = `NT$ ${fee.toLocaleString()}`;
+  document.getElementById('tx-calc-tax').textContent = `NT$ ${tax.toLocaleString()}`;
+  document.getElementById('tx-calc-net').textContent = `NT$ ${Math.abs(netAmount).toLocaleString()}`;
+
+  display.style.display = 'block';
+}
+
+async function submitTransaction() {
+  const btn = document.getElementById('tx-submit-btn');
+  const status = document.getElementById('tx-status');
+
+  // 顯示載入狀態
+  btn.textContent = '⏳ 新增中...';
+  btn.disabled = true;
+
+  try {
+    // 收集表單資料
+    const qty = parseFloat(document.getElementById('tx-qty')?.value) || 0;
+    const price = parseFloat(document.getElementById('tx-price')?.value) || 0;
+    const type = document.getElementById('tx-type')?.value;
+    const amount = qty * price;
+
+    // 計算費用
+    const fee = ['買入', '賣出'].includes(type) 
+      ? Math.max(Math.round(amount * 0.001425 * 0.6), 20) : 0;
+    const tax = type === '賣出' ? Math.round(amount * 0.003) : 0;
+    const netAmount = type === '買入' ? -(amount + fee) : amount - fee - tax;
+
+    const payload = {
+      date: document.getElementById('tx-date')?.value,
+      account: document.getElementById('tx-account')?.value,
+      type: type,
+      stockCode: document.getElementById('tx-code')?.value,
+      stockName: document.getElementById('tx-name')?.value,
+      quantity: qty,
+      price: price,
+      amount: amount,
+      fee: fee,
+      tax: tax,
+      netAmount: netAmount,
+      note: document.getElementById('tx-note')?.value
+    };
+
+    // 基本驗證
+    if (!payload.date || !payload.account || !payload.type) {
+      throw new Error('請填寫必要欄位：日期、帳戶和交易類型');
+    }
+
+    if (['買入', '賣出'].includes(payload.type) && (!payload.stockCode || !qty || !price)) {
+      throw new Error('股票交易請填寫：股票代碼、數量和價格');
+    }
+
+    // 呼叫 Apps Script API
+    const response = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ 
+        action: 'addTransaction', 
+        payload: payload 
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      // 成功
+      status.style.display = 'block';
+      status.style.background = '#064e3b';
+      status.style.color = '#34d399';
+      status.style.border = '1px solid #059669';
+      status.textContent = '✅ ' + result.message;
+
+      // 2 秒後關閉並重新載入資料
+      setTimeout(() => {
+        closeTransactionModal();
+        if (typeof loadData === 'function') {
+          loadData(); // 重新載入最新資料
+        }
+      }, 2000);
+
+    } else {
+      throw new Error(result.message || '新增失敗，請稍後再試');
+    }
+
+  } catch (err) {
+    // 失敗處理
+    status.style.display = 'block';
+    status.style.background = '#450a0a';
+    status.style.color = '#fca5a5';
+    status.style.border = '1px solid #dc2626';
+    status.textContent = '❌ ' + err.message;
+  }
+
+  // 恢復按鈕狀態
+  btn.textContent = '✅ 確認新增';
+  btn.disabled = false;
+}
+
+// 點擊背景關閉 Modal
+document.getElementById('transaction-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeTransactionModal();
+});
